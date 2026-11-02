@@ -136,7 +136,7 @@ const Battle = (() => {
     const p = iso(d.x, d.y);
     Sound.sfx(ev.hit ? 'hit' : 'miss');
     const from = disp[ev.from] ? iso(disp[ev.from].x, disp[ev.from].y) : p, dir = Math.sign(p.x - from.x) || 1;
-    if (ev.hit) { burst(p.x, p.y - 26, dir, 7 + (ev.crit ? 6 : 0), ['#9a2a1e', '#c0442a', '#5a1410']); if (ev.crit) shake = 160; d.hitAt = performance.now(); d.hitDir = dir; }
+    if (ev.hit) { burst(p.x, p.y - 26, dir, 7 + (ev.crit ? 6 : 0), ['#9a2a1e', '#c0442a', '#5a1410']); if (ev.crit && !opts.still) shake = 160; d.hitAt = performance.now(); d.hitDir = dir; }
     else burst(p.x + dir * 10 + (Math.random() - 0.5) * 20, p.y + 2, 0, 6, ['#8a7a64', '#6a5c4a', '#a8987e'], true);
     if (ev.hit) { d.hp = ev.hpAfter; float(p, `${ev.crit ? 'Crit ' : ''}−${ev.dmg}`, ev.crit ? '#ffcf6b' : '#ff9c84', ev.crit ? 20 : 17); }
     else float(p, 'Miss', '#cfc3a8');
@@ -1066,6 +1066,8 @@ const Battle = (() => {
       else if (ab === 'steady' || ab === 'quick') run(() => TAC.shoot(b, u.id, targetId, ab));
       else run(() => TAC.ability(b, u.id, ab));
     }
+    else if (a === 'godwin') { run(() => UNM.god.winBattle({ battle: b })); syncDisp(); renderHud(); }
+    else if (a === 'godheal') { run(() => UNM.god.healSquad({ battle: b })); syncDisp(); renderHud(); }
     else if (a === 'untarget') { targetId = null; renderHud(); }
     else if (a === 'nextTarget') cycleTarget();
     else if (a === 'end') { if (!busy()) { targetId = null; pending = null; enemyAnim = true; run(() => TAC.endTurn(b)); } }
@@ -1112,7 +1114,7 @@ const Battle = (() => {
     el.className = 'battle'; el.hidden = true;
     el.setAttribute('aria-label', 'Tactical mission');
     el.innerHTML = `<canvas class="b-canvas" aria-label="Battlefield. Tap your crew to select, tiles to move, enemies to aim."></canvas>
-      <header class="b-top"><div class="b-head"><b class="b-site"></b><span class="b-turn"></span></div><div class="b-obj"></div><div class="b-tools"><button class="btn small ghost" data-b="recenter" aria-label="Recenter map">⌖</button><button class="btn small ghost b-retreat" data-b="retreat">Retreat</button></div></header>
+      <header class="b-top"><div class="b-head"><b class="b-site"></b><span class="b-turn"></span></div><div class="b-obj"></div><div class="b-tools"><button class="btn small ghost b-god" data-b="godheal" hidden>⚡ Heal</button><button class="btn small ghost b-god" data-b="godwin" hidden>⚡ Win</button><button class="btn small ghost" data-b="recenter" aria-label="Recenter map">⌖</button><button class="btn small ghost b-retreat" data-b="retreat">Retreat</button></div></header>
       <div class="b-say" role="status" hidden></div>
       <footer class="b-bottom"><div class="b-tip" aria-live="polite"></div><div class="b-units"></div><div class="b-actions"></div></footer>
       <div class="b-modal" hidden></div>`;
@@ -1136,6 +1138,7 @@ const Battle = (() => {
     movedOnce = b.turn > 1; aimedOnce = b.turn > 1;
     el.querySelector('.b-modal').hidden = true;
     el.querySelector('.b-say').hidden = true;
+    el.querySelectorAll('.b-god').forEach((x) => { x.hidden = !opts.god; });
     el.hidden = false;
     document.body.classList.add('in-battle');
     // The state is already final; show it as it was, then play any queued events.
@@ -1157,6 +1160,6 @@ const Battle = (() => {
   // Test hooks: screen position of a tile, and whether animations have settled.
   function screenOf(x, y, lift = 0) { const c = iso(x, y); const r = cv.getBoundingClientRect(); return { x: r.left + c.x * cam.scale + cam.x, y: r.top + (c.y - lift) * cam.scale + cam.y }; }
   const settled = () => !!b && !animating && !queue.length && !cur;
-  function setOptions(o) { opts = { ...opts, ...o }; }
+  function setOptions(o) { opts = { ...opts, ...o }; if (el) el.querySelectorAll('.b-god').forEach((x) => { x.hidden = !opts.god; }); }
   return { open, close, setOptions, cycleTarget, targetId: () => targetId, isOpen: () => !!(el && !el.hidden), screenOf, settled, selectedId: () => selId, resync: () => { syncDisp(); visCache = null; reachCache = null; } };
 })();

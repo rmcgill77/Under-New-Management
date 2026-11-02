@@ -249,6 +249,58 @@ body.in-battle .app > :not(.battle) { visibility: hidden; }
 body.text-lg .drawer > *, body.text-lg .sheet > *, body.text-lg .objective > *, body.text-lg .bubble, body.text-lg .toast, body.text-lg .b-bottom > *, body.text-lg .b-say, body.text-lg .b-card > * { zoom: 1.15; }
 body.text-xl .drawer > *, body.text-xl .sheet > *, body.text-xl .objective > *, body.text-xl .bubble, body.text-xl .toast, body.text-xl .b-bottom > *, body.text-xl .b-say, body.text-xl .b-card > * { zoom: 1.3; }
 body.text-xl .bubble, body.text-xl .toast, body.text-xl .b-say { max-width: calc(min(440px, 100vw - 24px) / 1.3); }
+body.text-xxl .drawer > *, body.text-xxl .sheet > *, body.text-xxl .objective > *, body.text-xxl .bubble, body.text-xxl .toast, body.text-xxl .b-bottom > *, body.text-xxl .b-say, body.text-xxl .b-card > * { zoom: 1.5; }
+body.text-xxl .bubble, body.text-xxl .toast, body.text-xxl .b-say { max-width: calc(min(440px, 100vw - 24px) / 1.5); }
+/* typeface: easy-read (Atkinson Hyperlegible) or plain system text for every font in the game */
+body.font-easy { --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; --font-display: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; --font-pilot: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; }
+body.font-plain { --font-body: system-ui, "Segoe UI", Roboto, sans-serif; --font-display: system-ui, "Segoe UI", Roboto, sans-serif; --font-pilot: system-ui, "Segoe UI", Roboto, sans-serif; }
+body.font-easy .name-input, body.font-plain .name-input { font-family: var(--font-display); letter-spacing: .06em; }
+body.font-easy .menu h1, body.font-plain .menu h1 { letter-spacing: 0; }
+/* roomier text: line, letter and word spacing */
+body.space-loose .drawer, body.space-loose .sheet, body.space-loose .objective, body.space-loose .bubble, body.space-loose .toast, body.space-loose .b-bottom, body.space-loose .b-say, body.space-loose .b-card, body.space-loose .menu { line-height: 1.7; letter-spacing: 0.03em; word-spacing: 0.12em; }
+body.space-loose .sheet p, body.space-loose .sheet li { margin-bottom: 0.9em; }
+/* high contrast: black on white, one strong accent, heavier borders */
+body.hc { --ink: #000; --paper: #fff; --paper-2: #f0f0f0; --muted: #1a1a1a; --line: #000; --lamp: #ffc107; --rust: #7a2400; --good: #006b1e; --bad: #b00000; }
+body.hc.cb { --good: #0047ab; --bad: #b34700; }
+body.hc .btn, body.hc .pick label, body.hc .objective, body.hc .sheet, body.hc .b-card, body.hc .drawer .card, body.hc .res li { border-width: 3px; }
+body.hc .btn.primary { background: var(--lamp); color: #000; }
+body.hc .muted, body.hc .small.muted { color: #1a1a1a; }
+body.hc .res li { border-color: #fff; background: rgba(255, 255, 255, 0.18); }
+body.hc .res .rl, body.hc .phase { color: #fff; }
+/* reduce motion: nothing flickers, pulses, slides or shakes */
+body.still *, body.still *::before, body.still *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+/* bigger touch targets */
+body.big-touch .btn, body.big-touch .btn.small, body.big-touch .icon-btn, body.big-touch .rail button, body.big-touch .pick label, body.big-touch .b-actions .btn, body.big-touch .dd { min-height: 52px; min-width: 52px; }
+body.big-touch .icon-btn { width: 52px; height: 52px; }
+body.big-touch .pick { gap: 10px; } body.big-touch .row, body.big-touch .actions { gap: 12px; }
+/* thick focus ring for keyboard and switch users */
+body.focus-strong :focus-visible { outline: 4px solid #fff; box-shadow: 0 0 0 8px #000; outline-offset: 2px; position: relative; z-index: 1; }
+/* settings pieces */
+.sh { font-family: var(--font-display); color: var(--rust); text-transform: uppercase; letter-spacing: .08em; font-size: 15px; margin: 16px 0 6px; }
+.vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 14px; }
+.vol input[type=range] { flex: 1; min-width: 120px; min-height: 32px; accent-color: var(--rust); }
+.vol output { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.seg > .lbl { font-size: 14px; min-width: 8.5em; }
+.btn[aria-pressed="true"]:not(.primary) { background: var(--ink); color: var(--paper); }
+/* update banner */
+.update { position: fixed; z-index: 400; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 10px); width: min(520px, calc(100vw - 24px)); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; background: var(--paper); color: var(--ink); border: 2px solid var(--ink); box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5); font-size: 15px; line-height: 1.3; }
+.update[hidden] { display: none; }
+.update-text { flex: 1 1 220px; }
+.update-btns { display: flex; gap: 8px; }
+.update .btn.ghost { color: var(--ink); border-color: var(--ink); }
+body.in-battle .update { display: none; }
+/* god mode */
+.god-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.god-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.god-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.god-row .lbl { min-width: 5.5em; font-size: 14px; }
+.god-row input[type=number], .god-row input[type=password], .god-in { width: 6.5em; padding: 6px 8px; border: 2px solid var(--ink); background: #f5ecd8; color: var(--ink); min-height: 40px; border-radius: 2px; }
+.god-row .btn { text-align: center; }
+.god-note { font-size: 13px; color: var(--muted); margin: 4px 0 8px; }
+.god-who { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.god-who b { flex: 1 1 8em; }
+
 body.cb { --good: #2f6fae; --bad: #c4661a; }
 body.cb .chip.good { background: #bcd3ea; } body.cb .chip.bad { background: #f2c99c; }
 body.cb .log li.good { color: #23558a; } body.cb .log li.bad { color: #9a4c10; }

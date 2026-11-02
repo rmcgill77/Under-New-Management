@@ -26,6 +26,7 @@ jobs:
           node test/tac.cjs
           node test/raid.cjs
           node test/abil.cjs
+          node test/god.cjs
       - name: Build
         run: python3 build.py
       - uses: actions/upload-pages-artifact@v3

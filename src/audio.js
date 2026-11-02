@@ -12,6 +12,7 @@ const Sound = (() => {
   let mood = 'morning', nextT = 0, step = 0, phrase = [], rest = 0;
   let wind = null, drone = null;
   const MUSIC_LEVEL = 0.3, SFX_LEVEL = 0.55;
+  const vol = { music: 1, sfx: 1 };
   // root: tonic (MIDI); beat: seconds per step; play: chance a phrase starts on a free step;
   // wind/drone: bed levels; drums: battle pulse; fire: night crackle
   const MOODS = {
@@ -34,8 +35,8 @@ const Sound = (() => {
       master = ac.createGain(); master.gain.value = 0.85;
       const comp = ac.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 3;
       master.connect(comp).connect(ac.destination);
-      musicBus = ac.createGain(); musicBus.gain.value = enabled.music ? MUSIC_LEVEL : 0; musicBus.connect(master);
-      sfxBus = ac.createGain(); sfxBus.gain.value = enabled.sfx ? SFX_LEVEL : 0; sfxBus.connect(master);
+      musicBus = ac.createGain(); musicBus.gain.value = enabled.music ? MUSIC_LEVEL * vol.music : 0; musicBus.connect(master);
+      sfxBus = ac.createGain(); sfxBus.gain.value = enabled.sfx ? SFX_LEVEL * vol.sfx : 0; sfxBus.connect(master);
       noise = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
       const d = noise.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -250,7 +251,9 @@ const Sound = (() => {
     enabled[kind] = on;
     if (!ac) return;
     const bus = kind === 'music' ? musicBus : sfxBus;
-    bus.gain.setTargetAtTime(on ? (kind === 'music' ? MUSIC_LEVEL : SFX_LEVEL) : 0, ac.currentTime, 0.2);
+    bus.gain.setTargetAtTime(on ? (kind === 'music' ? MUSIC_LEVEL : SFX_LEVEL) * vol[kind] : 0, ac.currentTime, 0.2);
   }
-  return { init, sfx, setMood, setEnabled, get started() { return !!ac; } };
+  // Volume sliders: v is 0..1 and scales that bus on top of the on/off switch.
+  function setVolume(kind, v) { vol[kind] = Math.max(0, Math.min(1, v)); setEnabled(kind, enabled[kind]); }
+  return { init, sfx, setMood, setEnabled, setVolume, get started() { return !!ac; } };
 })();

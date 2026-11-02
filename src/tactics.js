@@ -372,7 +372,8 @@ const TAC = (() => {
   // ---------- damage ----------
   function damage(b, a, t, r, opts = {}) {
     const chance = opts.chance ?? hitChance(b, a, t, opts);
-    const hit = opts.sure || r.next() * 100 < chance;
+    const G = TAC.god; // hidden developer flags (see god.js); null in normal play
+    const hit = opts.sure || (G && G.sureHit && a.side === 'crew') || r.next() * 100 < chance;
     const ev = { t: 'shot', from: a.id, to: t.id, hit, chance, dmg: 0, crit: false, melee: a.range === 1, ow: !!opts.ow };
     if (a.side === 'enemy') a.revealed = true;
     if (hit) {
@@ -383,6 +384,8 @@ const TAC = (() => {
       if (opts.lethal) d = t.hp + 50;
       // Tutorial fight: only the scripted loss is allowed; everyone else hangs on at 1.
       if (b.intro && t.side === 'crew' && !opts.lethal) d = Math.min(d, Math.max(0, t.hp - 1));
+      if (G && G.invincible && t.side === 'crew') d = 0;
+      if (G && G.oneHit && t.side === 'enemy') d = Math.max(d, t.hp);
       t.hp -= d; ev.dmg = d;
     }
     ev.hpAfter = Math.max(0, t.hp);
@@ -1074,6 +1077,6 @@ const TAC = (() => {
     W, H, EXTRACT_ROWS, ABILITIES, ENEMY, ROLE_STATS,
     create, reach, pathTo, move, shoot, overwatch, hunker, ability, actions, targets, endTurn, retreat, autoplay,
     hitChance, coverFrom, los, high, visibleEnemies, byId, active, standing, unitAt, inExtract, idx, flanked,
-    nbrs, hexDist, dist, hp, fromHp,
+    nbrs, hexDist, dist, hp, fromHp, checkEnd, god: null,
   };
 })();

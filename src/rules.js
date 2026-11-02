@@ -239,6 +239,7 @@ const UNM = (() => {
   function costOf(s, typeId, kind = 'build', room) {
     const base = ROOM_TYPES[typeId].cost;
     if (!base) return null;
+    if (s.god && s.god.freeBuild) return { buttons: 0, salvage: 0 };
     const workshop = s.rooms.some((r) => r.type === 'workshop' && r.state === 'working');
     let mult = kind === 'repair' ? 0.5 : kind === 'upgrade' ? 1 + (room ? room.level : 1) * 0.75 : 1;
     if (workshop && kind !== 'build') mult *= 0.75;
@@ -259,7 +260,7 @@ const UNM = (() => {
     if (!canPay(s, cost)) return 'Not enough silver buttons or salvage.';
     pay(s, cost);
     s.nextRoom = (s.nextRoom || 100) + 1;
-    s.rooms.push({ id: `r${s.nextRoom}`, type: typeId, row, col, state: 'building', level: 1, buildLeft: t.days, free: false });
+    s.rooms.push({ id: `r${s.nextRoom}`, type: typeId, row, col, state: s.god && s.god.freeBuild ? 'working' : 'building', level: 1, buildLeft: s.god && s.god.freeBuild ? 0 : t.days, free: false });
     log(s, `Work started on a ${t.name}. Ready in ${t.days} day${t.days > 1 ? 's' : ''}.`);
     tutorialCheck(s);
     return null;
@@ -353,12 +354,14 @@ const UNM = (() => {
   function caps(s) {
     const st = s.rooms.filter((r) => r.type === 'storage' && r.state === 'working').reduce((n, r) => n + r.level, 0);
     const cold = s.rooms.filter((r) => r.type === 'cold_storage' && isRunning(s, r)).reduce((n, r) => n + r.level, 0);
-    return { food: 60 + st * 40 + cold * 60, water: 60 + st * 40, salvage: 80 + st * 50 };
+    const big = s.god && s.god.infinite ? 100000 : 0;
+    return { food: 60 + st * 40 + cold * 60 + big, water: 60 + st * 40 + big, salvage: 80 + st * 50 + big };
   }
   function clampRes(s) {
     const c = caps(s);
     for (const k of ['food', 'water', 'salvage']) s.res[k] = Math.max(0, Math.min(c[k], Math.floor(s.res[k])));
     s.res.buttons = Math.floor(s.res.buttons);
+    if (s.god && s.god.infinite) { for (const k of ['buttons', 'salvage', 'food', 'water']) s.res[k] = Math.max(s.res[k], 9999); }
   }
   function moraleMult(c) { return c.morale < 30 ? 0.7 : c.morale > 80 ? 1.15 : 1; }
 
@@ -659,7 +662,7 @@ const UNM = (() => {
     } else if (attack > defense * 2.5 + 10 && s.day >= 10) {
       res.outcome = 'overrun';
       res.lines.push(`${w.name}'s raiders poured over the walls. There were too many.`);
-      s.gameOver = 'Raiders took the waystation.';
+      if (!(s.god && s.god.undying)) s.gameOver = 'Raiders took the waystation.';
     } else {
       res.outcome = 'breached';
       const targets = s.rooms.filter((x) => x.row === 0 && x.state === 'working');
@@ -791,6 +794,7 @@ const UNM = (() => {
   }
   // Tonight's raid, if any. With informants this is decided in the morning so they can warn you.
   function rollRaid(s, r) {
+    if (s.god && s.god.forceRaid) { const f = s.warlords.find((x) => x.alive && x.id === s.god.forceRaid); s.god.forceRaid = null; if (f) return f; }
     for (const w of r.shuffle(s.warlords.filter((x) => x.alive))) {
       let p = raidChance(w, s.day);
       if (s.rooms.some((x) => x.type === 'watchtower' && isRunning(s, x))) p *= 0.85;
@@ -1436,7 +1440,7 @@ const UNM = (() => {
       for (const c of atHome(s)) c.morale = Math.max(0, c.morale - 8);
     } else {
       res.lines.unshift(`${res.warlord}'s raiders cut down the last of the defenders.`);
-      s.gameOver = 'Raiders took the waystation.';
+      if (!(s.god && s.god.undying)) s.gameOver = 'Raiders took the waystation.';
     }
     if (res.wrecked.length) res.lines.push(`Wrecked: ${res.wrecked.join(', ')}. Repair them from the cutaway.`);
     if (o.surrendered || (o.outcome === 'repelled' && r.chance(0.3))) { res.lines.push('One raider was left behind, wounded and begging.'); s.pendingEvents.push({ id: 'surrender', site: 'the gate' }); }
@@ -1517,8 +1521,8 @@ const UNM = (() => {
     }
     refreshMissions(s);
     // Failure checks
-    if (!s.gameOver && s.res.buttons <= 0) s.gameOver = 'The waystation ran out of silver buttons.';
-    if (!s.gameOver && living(s).length === 0) s.gameOver = 'There is no one left to run the waystation.';
+    if (!s.gameOver && !(s.god && s.god.undying) && s.res.buttons <= 0) s.gameOver = 'The waystation ran out of silver buttons.';
+    if (!s.gameOver && !(s.god && s.god.undying) && living(s).length === 0) s.gameOver = 'There is no one left to run the waystation.';
     updateTrust(s);
     tutorialCheck(s);
     log(s, `Day ${s.day} begins.${night.raid ? ` Raid by ${night.raid.warlord}: ${night.raid.outcome}.` : ''}`, night.raid ? (night.raid.outcome === 'repelled' ? 'good' : 'bad') : '');
@@ -1606,5 +1610,7 @@ const UNM = (() => {
     powerReport, isRunning, caps, bedCount, living, atHome, chooseRole, hire, giftWarlord,
     successChance, setSquad, defenseScore, raidChance, startBattle, finishBattle, missionOwner, startRaid, finishRaid, finishNight, defaultDefenders, raidBase,
     eventView, answerEvent, endMorning, endEvening, skipTutorial, tutorialCheck, updateTrust,
+    // internals for god.js (the hidden developer tools)
+    _x: { makeRecruit, makeMission, refreshMissions, log, nudge, gainGear, rollRaid, clampRes, techState, rng, TUTORIAL_ROOMS, SAVE_VERSION },
   };
 })();

@@ -58,10 +58,67 @@
   }
   function readSlot(i) { try { const t = localStorage.getItem(SLOT_KEY(i)); return t ? UNM.deserialize(t) : null; } catch (e) { return { broken: true }; } }
   function loadPrefs() {
-    const base = { res: ['buttons', 'salvage', 'food', 'water', 'power', 'defense'], music: true, sfx: true, text: 'md', cb: false, fast: false };
+    const osStill = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+    const osContrast = (() => { try { return matchMedia('(prefers-contrast: more)').matches; } catch (e) { return false; } })();
+    const base = { res: ['buttons', 'salvage', 'food', 'water', 'power', 'defense'], music: true, sfx: true, text: 'md', cb: false, fast: false,
+      font: 'std', loose: false, hc: osContrast, still: osStill, big: false, focus: false, hold: 'normal', vMusic: 100, vSfx: 100 };
     try { return { ...base, ...(JSON.parse(localStorage.getItem(PREF_KEY)) || {}) }; } catch (e) { return base; }
   }
   function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* ignore */ } }
+
+  // Apply every display, motion and sound preference. Safe to call often.
+  function applyPrefs() {
+    const b = document.body.classList;
+    for (const k of ['md', 'lg', 'xl', 'xxl']) b.toggle(`text-${k}`, prefs.text === k && k !== 'md');
+    b.toggle('font-easy', prefs.font === 'easy'); b.toggle('font-plain', prefs.font === 'plain');
+    b.toggle('space-loose', !!prefs.loose); b.toggle('hc', !!prefs.hc); b.toggle('cb', !!prefs.cb);
+    b.toggle('still', !!prefs.still); b.toggle('big-touch', !!prefs.big); b.toggle('focus-strong', !!prefs.focus);
+    window.__still = !!prefs.still;
+    Sound.setVolume('music', prefs.vMusic / 100); Sound.setVolume('sfx', prefs.vSfx / 100);
+    Battle.setOptions({ fast: prefs.fast || prefs.still, still: prefs.still, cb: prefs.cb, god: godUnlocked });
+  }
+  const HOLD = { normal: 1, slow: 2.5, tap: 0 };   // how long messages stay up; 0 = until tapped
+
+  // ---------- updates ----------
+  // The installed copy keeps an offline cache. A new build installs quietly in the background and waits;
+  // we tell the player, and "Update now" hands over to it and reloads. Saves are already on the device.
+  let swReg = null, updateReady = false, applying = false, laterHidden = false;
+  const BUILD = window.__BUILD || '';
+  function showUpdate() { updateReady = true; if (!laterHidden) $('update').hidden = false; if (document.getElementById('sheet') && sheets[0] && /ettings$/.test(sheets[0].kind)) render(); }
+  function applyUpdate() {
+    save();
+    applying = true;
+    $('update').hidden = true;
+    toast('Updating…');
+    const w = swReg && swReg.waiting;
+    if (w) w.postMessage({ type: 'SKIP_WAITING' });
+    else location.reload();
+    setTimeout(() => { if (applying) location.reload(); }, 4000);   // fallback if the switch event never arrives
+  }
+  function checkForUpdate(manual) {
+    if (!swReg) { if (manual) toast(window.__PWA ? 'Updates are not available right now.' : 'This preview copy does not update itself.'); return; }
+    swReg.update().then(() => {
+      if (swReg.waiting || swReg.installing) { if (manual && !updateReady) toast('Found a new version. Getting it ready…'); return; }
+      if (manual) toast('You are on the latest version.');
+    }).catch(() => { if (manual) toast('Could not check. Are you offline?', true); });
+  }
+  function setupUpdates() {
+    if (!window.__PWA || !('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      swReg = reg;
+      const watch = (w) => { if (w) w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdate(); }); };
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdate();
+      reg.addEventListener('updatefound', () => watch(reg.installing));
+      const check = () => reg.update().catch(() => { /* offline */ });
+      setInterval(check, 20 * 60 * 1000);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+      window.addEventListener('online', check);
+    }).catch(() => { /* offline copy unavailable */ });
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (applying) location.reload(); });
+  }
+
+  // ---------- hidden developer tools (see god.js) ----------
+  let godUnlocked = false, godTaps = 0, godTapAt = 0, godFails = 0, godLockUntil = 0;
 
   // ---------- Pilot Light voice ----------
   let audio = null;
@@ -109,13 +166,13 @@
     b.innerHTML = `<b>Pilot Light</b>${esc(text)}`;
     b.hidden = false;
     clearTimeout(bubbleTimer);
-    bubbleTimer = setTimeout(() => (b.hidden = true), 6000);
+    if (HOLD[prefs.hold] !== 0) bubbleTimer = setTimeout(() => (b.hidden = true), 6000 * (HOLD[prefs.hold] || 1));
   }
 
   function toast(text, bad) {
     const t = $('toast');
     t.textContent = text; t.className = 'toast' + (bad ? ' bad' : ''); t.hidden = false;
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 3200);
+    clearTimeout(toastTimer); if (HOLD[prefs.hold] !== 0) toastTimer = setTimeout(() => (t.hidden = true), 3200 * (HOLD[prefs.hold] || 1));
   }
 
   // ---------- helpers ----------
@@ -428,6 +485,72 @@
     if (s.pendingEvents.length && s.phase === 'morning') sheets.push({ kind: 'event' });
     if (s.pendingRoleChoice.length && roleDeferredAt !== s.day + s.phase) sheets.push({ kind: 'role', id: s.pendingRoleChoice[0] });
   }
+  // ---------- settings pieces ----------
+  const h3 = (text) => `<h3 class="sh">${text}</h3>`;
+  const seg = (label, key, opts) => `<div class="seg" role="group" aria-label="${label}"><span class="lbl">${label}</span>${opts.map(([v, l]) => `<button class="btn small ${prefs[key] === v ? 'primary' : ''}" data-act="pset" data-arg="${key}:${v}" aria-pressed="${prefs[key] === v}">${l}</button>`).join('')}</div>`;
+  const tog = (label, key, note) => `<button class="btn small" data-act="ptoggle" data-arg="${key}" aria-pressed="${!!prefs[key]}" ${note ? `title="${esc(note)}"` : ''}>${label}: ${prefs[key] ? 'on' : 'off'}</button>`;
+  function audioHtml() {
+    return `${h3('Sound')}<div class="row"><button class="btn small" data-act="music" aria-pressed="${prefs.music}">Music: ${prefs.music ? 'on' : 'off'}</button><button class="btn small" data-act="sfx" aria-pressed="${prefs.sfx}">Sound effects: ${prefs.sfx ? 'on' : 'off'}</button></div>
+      <label class="vol">Music volume<input type="range" min="0" max="100" step="5" value="${prefs.vMusic}" data-vol="vMusic" aria-label="Music volume"><output>${prefs.vMusic}%</output></label>
+      <label class="vol">Effects volume<input type="range" min="0" max="100" step="5" value="${prefs.vSfx}" data-vol="vSfx" aria-label="Sound effects volume"><output>${prefs.vSfx}%</output></label>`;
+  }
+  function accessHtml() {
+    return `${h3('Accessibility')}
+      ${seg('Text size', 'text', [['md', 'Normal'], ['lg', 'Large'], ['xl', 'Larger'], ['xxl', 'Largest']])}
+      ${seg('Typeface', 'font', [['std', 'Game style'], ['easy', 'Easy-read'], ['plain', 'Plain']])}
+      ${seg('Message time', 'hold', [['normal', 'Normal'], ['slow', 'Longer'], ['tap', 'Until I tap']])}
+      <div class="row" style="margin-top:8px">${tog('High contrast', 'hc')}${tog('Colour-blind safe colours', 'cb')}${tog('Roomier text spacing', 'loose')}</div>
+      <div class="row" style="margin-top:8px">${tog('Reduce motion and flashing', 'still')}${tog('Fast battle animations', 'fast')}</div>
+      <div class="row" style="margin-top:8px">${tog('Bigger touch targets', 'big')}${tog('Strong focus outline', 'focus')}</div>
+      <p class="small muted">The first time, High contrast and Reduce motion follow your device settings. Everything here is remembered on this device.</p>
+      <div class="row"><button class="btn small ghost" data-act="resetAccess">Reset accessibility to defaults</button></div>`;
+  }
+  function aboutHtml() {
+    const ver = BUILD ? `Version ${esc(BUILD)}` : 'Preview build (not installable)';
+    return `${h3('Updates')}<p class="small">${ver}${updateReady ? ' · <b>a newer version is ready</b>' : ''}</p>
+      <div class="row">${updateReady ? '<button class="btn small primary" data-act="applyUpdate">Update now</button>' : '<button class="btn small" data-act="checkUpdate">Check for updates</button>'}</div>`;
+  }
+  const STAT = (label, body) => `<div class="god-row"><span class="lbl">${label}</span>${body}</div>`;
+  const gnum = (id, val, op, a, extra) => `<input class="god-in" type="number" id="${id}" value="${val}" aria-label="${esc(id)}"><button class="btn small" data-act="god" data-op="${op}" ${a !== undefined ? `data-a="${a}"` : ''} data-from="${id}">Set</button>${extra || ''}`;
+  const gbtn = (label, op, a, b, cls) => `<button class="btn small ${cls || ''}" data-act="god" data-op="${op}" ${a !== undefined ? `data-a="${esc(a)}"` : ''} ${b !== undefined ? `data-b="${esc(b)}"` : ''}>${label}</button>`;
+  function godHtml(sh) {
+    const G = UNM.god, tabs = [['sw', 'Switches'], ['res', 'Resources'], ['crew', 'Crew'], ['base', 'Base'], ['world', 'World']];
+    const tab = sh.tab || 'sw', f = s.god || {};
+    let body = '';
+    if (tab === 'sw') {
+      body = `<p class="god-note">Switches are saved with this waystation.</p><div class="god-grid">${Object.entries(G.FLAGS).map(([k, [n, d]]) => `<button class="btn small" data-act="god" data-op="toggle" data-a="${k}" aria-pressed="${!!f[k]}" title="${esc(d)}">${esc(n)}: ${f[k] ? 'on' : 'off'}</button>`).join('')}</div>
+        <ul class="report">${Object.values(G.FLAGS).map(([n, d]) => `<li><b>${esc(n)}</b>: ${esc(d)}</li>`).join('')}</ul>
+        ${STAT('Difficulty', Object.entries(UNM.DIFFICULTY).map(([k, d]) => gbtn(d.name, 'setDifficulty', k, undefined, s.difficulty === k ? 'primary' : '')).join(''))}
+        ${STAT('Ironman', gbtn('Turn it off', 'ironmanOff') + `<span class="small muted">${s.ironman ? 'on' : 'off'}</span>`)}
+        <div class="god-row">${gbtn('Skip the tutorial', 'skipTutorial')}${gbtn('Switch everything off', 'reset')}</div>`;
+    } else if (tab === 'res') {
+      body = `${['buttons', 'salvage', 'food', 'water'].map((k) => STAT(k[0].toUpperCase() + k.slice(1), gnum('g-' + k, s.res[k], 'setRes', k))).join('')}
+        ${STAT('Reputation', gnum('g-rep', s.rep, 'setRep'))}${STAT('Day', gnum('g-day', s.day, 'setDay'))}
+        ${STAT('Pilot Light trust', [1, 2, 3, 4, 5].map((l) => gbtn(String(l), 'setTrust', l, undefined, s.trust.level === l ? 'primary' : '')).join(''))}
+        <p class="god-note">Food, water and salvage are capped by storage unless Infinite resources is on.</p>`;
+    } else if (tab === 'crew') {
+      const roles = ['recruit', ...UNM.ROLES.map((r) => r.id)];
+      body = `<div class="god-row">${gbtn('Heal and revive everyone', 'healAll')}${gbtn('Staff every room', 'staffAll')}</div>
+        ${STAT('Add a person', roles.map((r) => gbtn(r === 'recruit' ? 'Recruit' : UNM.roleById(r).name, 'addRecruit', r)).join(''))}
+        ${s.crew.map((c) => `<div class="god-who"><b>${esc(c.name)}</b><span class="small muted">${roleName(c)} ${c.level}${c.alive ? '' : ' · down'}</span>${gbtn('Lv −', 'setLevel', c.id, '-1')}${gbtn('Lv +', 'setLevel', c.id, '1')}${gbtn('Heal', 'healCrew', c.id)}${gbtn('Dismiss', 'dismiss', c.id, undefined, 'ghost')}
+          <select class="god-in" style="width:auto" data-act="godrole" data-arg="${c.id}" aria-label="Role for ${esc(c.name)}">${roles.map((r) => `<option value="${r}" ${c.role === r ? 'selected' : ''}>${r === 'recruit' ? 'Recruit' : UNM.roleById(r).name}</option>`).join('')}</select></div>`).join('')}`;
+    } else if (tab === 'base') {
+      body = `<div class="god-row">${gbtn('Repair everything', 'repairAll')}${gbtn('Finish all building', 'finishBuilds')}${gbtn('Max every room', 'maxRooms')}</div>
+        <div class="god-row">${gbtn('Unlock all plans', 'unlockTech')}${gbtn('Finish current research', 'finishResearch')}${gbtn('Lock plans again', 'relockTech', undefined, undefined, 'ghost')}</div>
+        ${STAT('Underground', [0, 1, 2, 3, 4].filter((n) => n <= UNM.MAX_UNDER).map((n) => gbtn(`${n} levels`, 'setDug', n, undefined, s.dug === n ? 'primary' : '')).join(''))}
+        ${STAT('Build one', Object.keys(T).filter((k) => T[k].cost).map((k) => gbtn(T[k].name, 'buildAnywhere', k)).join(''))}
+        ${STAT('Gear', Object.entries(UNM.GEAR).map(([k, gdef]) => gbtn(gdef.name, 'giveGear', k)).join(''))}
+        <p class="god-note">Tap a room in the cutaway to level it, or tear it down, from its panel as usual. "Build one" uses the first free lot and ignores cost and plans.</p>`;
+    } else {
+      body = `<div class="god-row">${gbtn('Refresh missions', 'refreshMissions')}${gbtn('Clear open missions', 'clearMissions', undefined, undefined, 'ghost')}</div>
+        ${STAT('Add mission', ['salvage', 'rescue', 'combat', 'elite'].map((k) => gbtn(k[0].toUpperCase() + k.slice(1), 'addMission', k, '3')).join(''))}
+        <div class="god-row">${gbtn('Everyone loves me', 'befriendAll')}${gbtn('Story: vault ready', 'storyDone')}${gbtn('Open the vault', 'unlockVault')}</div>
+        ${s.warlords.filter((w) => w.alive).map((w) => `<div class="god-who"><b>${esc(w.name)}</b><span class="small muted">${esc(w.temperament)} · ${w.disposition}</span>${gnum('g-w-' + w.id, w.disposition, 'setDisposition', w.id)}${gbtn('Raid tonight', 'raidTonight', w.id)}${gbtn('Remove', 'removeWarlord', w.id, undefined, 'ghost')}</div>`).join('')}
+        <p class="god-note">In battle, ⚡ Heal and ⚡ Win appear at the top of the screen.</p>`;
+    }
+    return `<p class="eyebrow">Developer tools</p><h2>God mode</h2><div class="god-tabs" role="tablist">${tabs.map(([k, l]) => `<button class="btn small ${tab === k ? 'primary' : ''}" role="tab" aria-selected="${tab === k}" data-act="godTab" data-arg="${k}">${l}</button>`).join('')}</div>${body}<div class="actions"><button class="btn primary" data-act="close">Done</button></div>`;
+  }
+
   function showSheet() {
     const el = $('sheet'), scrim = $('scrim');
     const sh = sheets[0];
@@ -506,12 +629,9 @@
       const ds = !s.ironman && dayStart();
       html = `<p class="eyebrow">Day ${s.day}${s.ironman ? ' · Ironman' : ''}</p><h2>The waystation is lost</h2><p>${esc(s.gameOver)}</p>${s.ironman ? '<p class="small muted">Ironman: this waystation is gone for good.</p>' : ''}<div class="actions">${ds ? `<button class="btn primary" data-act="retryDay">Try day ${ds.day} again</button>` : ''}<button class="btn ${ds ? '' : 'primary'}" data-act="toMenu">Main menu</button></div>`;
     } else if (sh.kind === 'settings') {
-      html = `<h2>Settings</h2><h3 style="font-family:var(--font-display);color:var(--rust);text-transform:uppercase;letter-spacing:.08em;font-size:15px">The sign</h3><div class="row"><input id="wsrename" class="name-input" type="text" maxlength="16" autocomplete="off" spellcheck="false" value="${esc(UNM.nameOf(s))}" aria-label="Waystation name"><button class="btn small" data-act="rename">Repaint it</button></div><h3 style="font-family:var(--font-display);color:var(--rust);text-transform:uppercase;letter-spacing:.08em;font-size:15px">Top bar shows</h3><div class="pick">${Object.entries(RES_META).map(([k, m]) => `<label><input type="checkbox" data-act="pref" data-arg="${k}" ${prefs.res.includes(k) ? 'checked' : ''}>${m.label}</label>`).join('')}</div>
-        <div class="row" style="margin-top:12px"><button class="btn small" data-act="music" aria-pressed="${prefs.music}">Music: ${prefs.music ? 'on' : 'off'}</button><button class="btn small" data-act="sfx" aria-pressed="${prefs.sfx}">Sound effects: ${prefs.sfx ? 'on' : 'off'}</button></div>
-        <h3 style="font-family:var(--font-display);color:var(--rust);text-transform:uppercase;letter-spacing:.08em;font-size:15px">Accessibility</h3>
-        <div class="row"><span class="small">Text size</span>${[['md', 'Normal'], ['lg', 'Large'], ['xl', 'Larger']].map(([k, l]) => `<button class="btn small ${prefs.text === k ? 'primary' : ''}" data-act="textsize" data-arg="${k}" aria-pressed="${prefs.text === k}">${l}</button>`).join('')}</div>
-        <div class="row" style="margin-top:8px"><button class="btn small" data-act="cb" aria-pressed="${prefs.cb}">Colour-blind safe colours: ${prefs.cb ? 'on' : 'off'}</button><button class="btn small" data-act="fast" aria-pressed="${prefs.fast}">Fast battle animations: ${prefs.fast ? 'on' : 'off'}</button></div>
-        <div class="actions"><button class="btn" data-act="help">How to play</button><button class="btn" data-act="recenter">Recenter the view</button>${s.tutorial.step < UNM.TUTORIAL.length ? '<button class="btn" data-act="skiptut">Skip the tutorial</button>' : ''}${!s.ironman && dayStart() && !s.battle ? `<button class="btn" data-act="retryDay">Restart day ${dayStart().day}</button>` : ''}<button class="btn" data-act="toMenu">Save and go to the main menu</button><button class="btn primary" data-act="close">Done</button></div><p class="small muted">${esc(s.saveName || 'Waystation')} · slot ${(slot || 0) + 1} · ${UNM.DIFFICULTY[s.difficulty || 'standard'].name}${s.ironman ? ' · Ironman: one save, no restarts' : ''}. The game saves in this browser after every action. Seed: ${esc(s.seed)}.</p>`;
+      html = `<h2>Settings</h2>${h3('The sign')}<div class="row"><input id="wsrename" class="name-input" type="text" maxlength="16" autocomplete="off" spellcheck="false" value="${esc(UNM.nameOf(s))}" aria-label="Waystation name"><button class="btn small" data-act="rename">Repaint it</button></div>${h3('Top bar shows')}<div class="pick">${Object.entries(RES_META).map(([k, m]) => `<label><input type="checkbox" data-act="pref" data-arg="${k}" ${prefs.res.includes(k) ? 'checked' : ''}>${m.label}</label>`).join('')}</div>
+        ${audioHtml()}${accessHtml()}${aboutHtml()}
+        <div class="actions"><button class="btn" data-act="help">How to play</button><button class="btn" data-act="recenter">Recenter the view</button>${s.tutorial.step < UNM.TUTORIAL.length ? '<button class="btn" data-act="skiptut">Skip the tutorial</button>' : ''}${!s.ironman && dayStart() && !s.battle ? `<button class="btn" data-act="retryDay">Restart day ${dayStart().day}</button>` : ''}<button class="btn" data-act="toMenu">Save and go to the main menu</button><button class="btn primary" data-act="close">Done</button></div><p class="small muted" data-act="godTap">${esc(s.saveName || 'Waystation')} · slot ${(slot || 0) + 1} · ${UNM.DIFFICULTY[s.difficulty || 'standard'].name}${s.ironman ? ' · Ironman: one save, no restarts' : ''}. The game saves in this browser after every action. Seed: ${esc(s.seed)}.</p>`;
     } else if (sh.kind === 'confirmNew') {
       html = `<h2>Start over?</h2><p>This replaces your current waystation (day ${s.day}). It cannot be undone.</p><div class="actions"><button class="btn primary" data-act="setupNew">Yes, set up a new game</button><button class="btn ghost" data-act="close">Keep playing</button></div>`;
     } else if (sh.kind === 'setup') {
@@ -528,11 +648,13 @@
         <input id="signname" class="name-input" type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="WAYSTATION" value="${esc(s.name || '')}" aria-label="Waystation name">
         <div class="actions"><button class="btn primary" data-act="paintSign">Paint the sign</button><button class="btn ghost" data-act="close">Not yet</button></div>`;
     } else if (sh.kind === 'menuSettings') {
-      html = `<h2>Settings</h2><div class="row"><button class="btn small" data-act="music" aria-pressed="${prefs.music}">Music: ${prefs.music ? 'on' : 'off'}</button><button class="btn small" data-act="sfx" aria-pressed="${prefs.sfx}">Sound effects: ${prefs.sfx ? 'on' : 'off'}</button></div>
-        <h3 style="font-family:var(--font-display);color:var(--rust);text-transform:uppercase;letter-spacing:.08em;font-size:15px">Accessibility</h3>
-        <div class="row"><span class="small">Text size</span>${[['md', 'Normal'], ['lg', 'Large'], ['xl', 'Larger']].map(([k, l]) => `<button class="btn small ${prefs.text === k ? 'primary' : ''}" data-act="textsize" data-arg="${k}" aria-pressed="${prefs.text === k}">${l}</button>`).join('')}</div>
-        <div class="row" style="margin-top:8px"><button class="btn small" data-act="cb" aria-pressed="${prefs.cb}">Colour-blind safe colours: ${prefs.cb ? 'on' : 'off'}</button><button class="btn small" data-act="fast" aria-pressed="${prefs.fast}">Fast battle animations: ${prefs.fast ? 'on' : 'off'}</button></div>
-        <div class="actions"><button class="btn primary" data-act="close">Done</button></div>`;
+      html = `<h2>Settings</h2>${audioHtml()}${accessHtml()}${aboutHtml()}<div class="actions"><button class="btn primary" data-act="close">Done</button></div>`;
+    } else if (sh.kind === 'godPass') {
+      html = `<p class="eyebrow">Restricted</p><h2>Say the words</h2><p class="small muted">Developer tools. This lock is only a courtesy: the game runs on your own device.</p>
+        <div class="god-row"><input id="godpw" class="god-in" style="width:100%" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Passphrase" placeholder="Passphrase"></div>
+        <div class="actions"><button class="btn primary" data-act="godTry">Unlock</button><button class="btn ghost" data-act="close">Never mind</button></div>`;
+    } else if (sh.kind === 'god') {
+      html = godHtml(sh);
     } else if (sh.kind === 'install') {
       const ua = navigator.userAgent || '', ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1), android = /Android/i.test(ua);
       const steps = {
@@ -572,14 +694,12 @@
     $('pilot').classList.toggle('nudge', s.tutorial.step < UNM.TUTORIAL.length);
   }
   function render() {
-    if (menuOpen) { showSheet(); document.body.classList.toggle('text-lg', prefs.text === 'lg'); document.body.classList.toggle('text-xl', prefs.text === 'xl'); document.body.classList.toggle('cb', !!prefs.cb); return; }
+    if (menuOpen) { showSheet(); UNM.god.sync(null); applyPrefs(); return; }
     renderTop(); renderRail(); renderDrawer(); renderObjective(); renderPhaseBtn(); showSheet();
     scene && scene.setState(s, sel, highlights());
     window.__unm = { s, UNM, sel, TAC, Battle, Sound, scene };
-    document.body.classList.toggle('text-lg', prefs.text === 'lg');
-    document.body.classList.toggle('text-xl', prefs.text === 'xl');
-    document.body.classList.toggle('cb', !!prefs.cb);
-    Battle.setOptions({ fast: prefs.fast || matchMedia('(prefers-reduced-motion: reduce)').matches, cb: prefs.cb });
+    UNM.god.sync(s);
+    applyPrefs();
     Sound.setMood(s.battle ? (s.battle.kind === 'raid' ? 'raid' : 'battle') : s.story && s.story.open && sheets[0] && sheets[0].kind === 'ending' ? 'vault' : s.phase === 'night' && s.pendingRaid ? 'raid' : s.phase);
   }
 
@@ -776,6 +896,29 @@
       case 'retryDay': { const d = dayStart(); if (d) { if (Battle.isOpen()) Battle.close(); scene.pause(false); s = d; s.gameOver = null; sheets = []; seenNight = s.day; sel = null; save(); render(); toast(`Back to the morning of day ${s.day}.`); } break; }
       case 'help': sheets.unshift({ kind: 'help' }); render(); break;
       case 'selroom': sel = { kind: 'room', id: arg }; render(); break;
+      case 'pset': { const i = arg.indexOf(':'); prefs[arg.slice(0, i)] = arg.slice(i + 1); savePrefs(); render(); break; }
+      case 'ptoggle': prefs[arg] = !prefs[arg]; savePrefs(); render(); break;
+      case 'resetAccess': Object.assign(prefs, { text: 'md', cb: false, fast: false, font: 'std', loose: false, hc: false, still: false, big: false, focus: false, hold: 'normal', vMusic: 100, vSfx: 100 }); savePrefs(); render(); toast('Accessibility settings reset.'); break;
+      case 'applyUpdate': applyUpdate(); break;
+      case 'laterUpdate': laterHidden = true; $('update').hidden = true; break;
+      case 'checkUpdate': checkForUpdate(true); break;
+      case 'godTap': { const now = Date.now(); godTaps = now - godTapAt < 1500 ? godTaps + 1 : 1; godTapAt = now; if (godTaps >= 7) { godTaps = 0; sheets.unshift(godUnlocked ? { kind: 'god', tab: 'sw' } : { kind: 'godPass' }); render(); } break; }
+      case 'godTry': {
+        const now = Date.now();
+        if (now < godLockUntil) { toast(`Wait ${Math.ceil((godLockUntil - now) / 1000)} seconds.`, true); break; }
+        const box = $('godpw');
+        if (box && UNM.god.check(box.value)) { godUnlocked = true; godFails = 0; sheets.shift(); sheets.unshift({ kind: 'god', tab: 'sw' }); Sound.sfx('door'); render(); }
+        else { godFails += 1; if (godFails >= 3) { godLockUntil = now + 30000; godFails = 0; } if (box) box.value = ''; toast('Nothing happens.', true); }
+        break;
+      }
+      case 'godTab': if (sheets[0] && sheets[0].kind === 'god') { sheets[0].tab = arg; render(); } break;
+      case 'god': {
+        if (!godUnlocked || !UNM.god[el.dataset.op]) break;
+        const val = el.dataset.from ? $(el.dataset.from).value : el.dataset.b;
+        const args = [el.dataset.a, val].filter((x) => x !== undefined);
+        act(() => UNM.god[el.dataset.op](s, ...args));
+        break;
+      }
       case 'textsize': prefs.text = arg; savePrefs(); render(); break;
       case 'cb': prefs.cb = !prefs.cb; savePrefs(); render(); break;
       case 'fast': prefs.fast = !prefs.fast; savePrefs(); render(); break;
@@ -792,6 +935,7 @@
     if (el.dataset.act === 'gear') {
       if (el.value !== '__keep') act(() => UNM.equipGear(s, el.dataset.arg, el.value || null));
     }
+    if (el.dataset.act === 'godrole' && godUnlocked) act(() => UNM.god.setRole(s, el.dataset.arg, el.value));
     if (el.dataset.act === 'setupopt') { setup[el.dataset.arg] = el.checked; }
     if (el.dataset.act === 'raidpick') {
       raidPick = el.checked ? [...raidPick, el.dataset.arg].slice(0, 6) : raidPick.filter((id) => id !== el.dataset.arg);
@@ -803,6 +947,14 @@
       savePrefs(); renderTop();
     }
   });
+  document.addEventListener('input', (e) => {
+    const el = e.target.closest && e.target.closest('[data-vol]');
+    if (!el) return;
+    prefs[el.dataset.vol] = Number(el.value); savePrefs(); applyPrefs();
+    const out = el.parentElement.querySelector('output'); if (out) out.textContent = `${el.value}%`;
+    if (el.dataset.vol === 'vSfx') Sound.sfx('click');
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target && e.target.id === 'godpw') { e.preventDefault(); const b = document.querySelector('[data-act="godTry"]'); if (b) b.click(); } });
   $('phaseBtn').addEventListener('click', () => {
     if (sheets.length) return;
     if (s.battle) { openBattle(); return; }
@@ -813,8 +965,8 @@
   $('pilot').addEventListener('click', () => speak(pilotSays()));
   $('bubble').addEventListener('click', () => ($('bubble').hidden = true));
   $('settingsBtn').addEventListener('click', () => { sheets.unshift({ kind: 'settings' }); render(); });
-  $('scrim').addEventListener('click', () => { const sh = sheets[0]; if (sh && ['settings', 'menuSettings', 'credits', 'install', 'namesign', 'confirmNew', 'depart', 'role', 'confirm', 'help'].includes(sh.kind) || (sh && sh.kind === 'setup' && sh.closable)) { sheets.shift(); render(); } });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { const sh = sheets[0]; if (sh && ['settings', 'menuSettings', 'credits', 'install', 'namesign', 'confirmNew', 'depart', 'role', 'confirm', 'help'].includes(sh.kind) || (sh && sh.kind === 'setup' && sh.closable)) { sheets.shift(); render(); } } });
+  $('scrim').addEventListener('click', () => { const sh = sheets[0]; if (sh && ['settings', 'menuSettings', 'credits', 'install', 'namesign', 'confirmNew', 'depart', 'role', 'confirm', 'help', 'god', 'godPass'].includes(sh.kind) || (sh && sh.kind === 'setup' && sh.closable)) { sheets.shift(); render(); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { const sh = sheets[0]; if (sh && ['settings', 'menuSettings', 'credits', 'install', 'namesign', 'confirmNew', 'depart', 'role', 'confirm', 'help', 'god', 'godPass'].includes(sh.kind) || (sh && sh.kind === 'setup' && sh.closable)) { sheets.shift(); render(); } } });
 
   // Audio may only start after a tap or key press.
   const wake = () => { Sound.setEnabled('music', prefs.music); Sound.setEnabled('sfx', prefs.sfx); Sound.init(); };
@@ -851,7 +1003,7 @@
       else if (s.phase === 'night') { UNM.finishNight(s); afterChange(); }
     } else { render(); openMenu(); Brand.splash(); }
     Brand.setFavicon();
-    if (window.__PWA && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* offline copy unavailable */ });
+    setupUpdates();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (!menuOpen) render(); });
     window.claude?.hot?.snapshot?.(() => ({ state: menuOpen ? null : s, slot }));
     // test hook: start slot 1 straight away, no menu, no story

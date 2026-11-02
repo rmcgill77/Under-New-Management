@@ -2,7 +2,7 @@ import pathlib
 src = pathlib.Path(__file__).parent / 'src'
 shell = (src/'shell.html').read_text()
 css = (src/'style.css').read_text()
-js = '\n'.join((src/f).read_text() for f in ['rules.js','tactics.js','audio.js','paint.js','sprites.js','structures.js','furniture.js','render.js','battle.js','dropdown.js','cinematic.js','brand.js','ui.js'])
+js = '\n'.join((src/f).read_text() for f in ['rules.js','tactics.js','god.js','audio.js','paint.js','sprites.js','structures.js','furniture.js','render.js','battle.js','dropdown.js','cinematic.js','brand.js','ui.js'])
 out = shell.replace('/*CSS*/', css).replace('/*JS*/', js)
 dist = pathlib.Path(__file__).parent / 'dist'; dist.mkdir(exist_ok=True)
 (dist/'under-new-management.html').write_text(out)
@@ -16,7 +16,7 @@ head = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="
   '<title>Under New Management</title><meta name="theme-color" content="#2c2219"><meta name="color-scheme" content="dark">'
   '<link rel="manifest" href="manifest.webmanifest"><link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">'
   '<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Under New Mgmt"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
-  '<script>window.__PWA=true</script><style>html,body{margin:0;height:100%;background:#0d0907;overscroll-behavior:none}[hidden]{display:none!important}</style></head><body>')
+  '<script>window.__PWA=true;window.__BUILD="' + ver + '"</script><style>html,body{margin:0;height:100%;background:#0d0907;overscroll-behavior:none}[hidden]{display:none!important}</style></head><body>')
 body = out.replace('<title>Under New Management</title>\n', '', 1)
 (pwa/'index.html').write_text(head + body + '</body></html>')
 (pwa/'manifest.webmanifest').write_text(json.dumps({
@@ -26,7 +26,9 @@ body = out.replace('<title>Under New Management</title>\n', '', 1)
 (pwa/'sw.js').write_text('''// Offline cache for the installed game. The cache name changes with every build.
 const CACHE = 'unm-%s';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-32.png'];
-self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
+// A new version installs quietly and waits. The game shows an "Update now" button; it posts SKIP_WAITING and the page reloads.
+self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => Promise.all(FILES.map((f) => fetch(new Request(f, { cache: 'reload' })).then((r) => { if (!r.ok) throw new Error(f); return c.put(f, r); }))))); });
+self.addEventListener('message', (e) => { if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
