@@ -293,6 +293,7 @@ const UNM = (() => {
   function demolishRoom(s, roomId) {
     const room = s.rooms.find((r) => r.id === roomId);
     if (!room || room.type === 'sealed_door') return 'Cannot clear that.';
+    if (s.tutorial && s.tutorial.step < TUTORIAL_ROOM_STEPS && TUTORIAL_ROOMS.some((x) => x[0] === room.type)) return 'Pilot Light needs that one for now. Keep it until the basics are done.';
     for (const c of s.crew) if (c.job === room.id) c.job = null;
     s.rooms = s.rooms.filter((r) => r !== room);
     s.res.salvage += 3;
@@ -1274,7 +1275,25 @@ const UNM = (() => {
     { id: 'name', text: 'One more thing. The sign out front still just says WAYSTATION. Your relative never named the place. Do you want to?', done: (s) => !!s.signDone },
   ];
   function stateOf(s, type) { const r = s.rooms.find((x) => x.type === type); return r ? r.state : null; }
+  // Rooms the early tutorial steps depend on. If one is missing (an old save, a slip), put a free ruined one back.
+  const TUTORIAL_ROOMS = [['guest_room', 0, 2], ['bar', 0, 4], ['generator', 1, 0], ['water_pump', 1, 1]];
+  const TUTORIAL_ROOM_STEPS = 4;
+  function restoreTutorialRooms(s) {
+    if (!s.tutorial || s.tutorial.step >= TUTORIAL_ROOM_STEPS) return;
+    for (const [type, row, col] of TUTORIAL_ROOMS) {
+      if (s.rooms.some((r) => r.type === type)) continue;
+      const w = ROOM_TYPES[type].w;
+      let at = null;
+      for (let c = col; c + w <= COLS && !at; c++) if (slotFree(s, row, c, w)) at = { row, col: c };
+      for (let c = 0; c < col && !at; c++) if (slotFree(s, row, c, w)) at = { row, col: c };
+      if (!at) continue;
+      s.nextRoom = (s.nextRoom || 100) + 1;
+      s.rooms.push({ id: `r${s.nextRoom}`, type, row: at.row, col: at.col, state: 'ruined', level: 1, free: true, buildLeft: 0 });
+      log(s, `Pilot Light patched the ${ROOM_TYPES[type].name} back in. This one is on the house.`, 'good');
+    }
+  }
   function tutorialCheck(s) {
+    restoreTutorialRooms(s);
     while (s.tutorial.step < TUTORIAL.length && TUTORIAL[s.tutorial.step].done(s)) {
       s.tutorial.step += 1;
       if (TUTORIAL[s.tutorial.step - 1].id === 'end_evening' && !s.missions.some((m) => m.scripted === 'intro')) {
@@ -1567,6 +1586,7 @@ const UNM = (() => {
       if (past) o.s.tutorial.step = Math.max(o.s.tutorial.step, 9);
     }
     if (o.s.saveName === undefined) o.s.saveName = '';
+    restoreTutorialRooms(o.s);
     return o.s;
   }
 
