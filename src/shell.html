@@ -1,0 +1,28 @@
+<title>Under New Management</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Big+Shoulders+Stencil+Text:wght@500;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>/*CSS*/</style>
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="daybox"><span class="day" id="day">Day 1</span><span class="phase" id="phase">Morning</span></div>
+    <ul class="res" id="res" aria-label="Resources"></ul>
+    <button class="icon-btn" id="settingsBtn" aria-label="Settings">⚙</button>
+  </header>
+  <main class="stage" id="stage">
+    <canvas id="cutaway" aria-label="Cutaway view of the waystation. Tap a room to manage it."></canvas>
+    <div class="objective" id="objective" hidden></div>
+    <div class="toast" id="toast" role="status" hidden></div>
+    <button class="pilot" id="pilot" aria-label="Talk to Pilot Light"><span class="flame"></span></button>
+    <div class="bubble" id="bubble" role="status" hidden></div>
+    <button class="phase-btn" id="phaseBtn">End morning</button>
+    <aside class="side" id="side">
+      <nav class="rail" id="rail" aria-label="Panels"></nav>
+      <section class="drawer" id="drawer" aria-live="polite"></section>
+    </aside>
+  </main>
+  <div class="scrim" id="scrim" hidden></div>
+  <section class="sheet" id="sheet" role="dialog" aria-modal="true" hidden></section>
+</div>
+<script>/*JS*/</script>
