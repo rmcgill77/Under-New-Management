@@ -269,7 +269,7 @@ const Cine = (() => {
     if (!on || !canvas) return;
     canvas.width = W; canvas.height = H;
     const g = canvas.getContext('2d'); g.imageSmoothingEnabled = false;
-    let last = 0; const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let last = 0; const reduce = (window.__still || matchMedia('(prefers-reduced-motion: reduce)').matches);
     const loop = (ms) => { if (ms - last > (reduce ? 1000 : 83)) { last = ms; SCENES.arrival(g, ms / 1000, { menu: true }); } bgRaf = requestAnimationFrame(loop); };
     bgRaf = requestAnimationFrame(loop);
   }
@@ -285,7 +285,7 @@ const Cine = (() => {
     const cv = root.querySelector('canvas'), g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
     const titleEl = root.querySelector('.cine-title'), textEl = root.querySelector('.cine-text'), stepEl = root.querySelector('.cine-step'), nextBtn = root.querySelector('.cine-next'), dots = root.querySelector('.cine-dots');
     dots.innerHTML = CARDS.map(() => '<i></i>').join('');
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduce = (window.__still || matchMedia('(prefers-reduced-motion: reduce)').matches);
     let i = -1, typed = 0, typer = 0, raf = 0, t0 = performance.now(), cardT = 0, finished = false;
     const frame = (ms) => { SCENES[CARDS[i].scene](g, (ms - t0) / 1000); raf = requestAnimationFrame(frame); };
     function reveal(all) {

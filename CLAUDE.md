@@ -19,7 +19,7 @@ python3 -m http.server -d dist/pwa 8765   # play the installable copy at http://
 `dist/` is generated and git-ignored. Never hand-edit it.
 
 `build.py` concatenates `src/shell.html` + `src/style.css` + these scripts **in this order** (globals
-depend on it): `rules.js, tactics.js, audio.js, paint.js, sprites.js, structures.js, furniture.js,
+depend on it): `rules.js, tactics.js, god.js, audio.js, paint.js, sprites.js, structures.js, furniture.js,
 render.js, battle.js, dropdown.js, cinematic.js, brand.js, ui.js`. A new source file must be added
 to the list in `build.py`.
 
@@ -29,6 +29,7 @@ to the list in `build.py`.
 |---|---|
 | `src/rules.js` | `UNM`: all game rules and content. Pure: no DOM, no canvas. Seeded RNG in `state.rng`; content ids are append-only (saves reference them). `newGame`, `serialize`/`deserialize` (with migrations), tutorial steps (`TUTORIAL`), economy, crew, missions, warlords, raids, tech tree, story. |
 | `src/tactics.js` | `TAC`: hex battle rules (pure): movement, cover, line of sight, hit chance, abilities, enemy AI. |
+| `src/god.js` | `UNM.god`: hidden developer tools ("god mode"). Unlocked by tapping the footer line in in-game Settings 7 times and entering the passphrase (SHA-256 checked, session-only unlock; a courtesy lock, not security). Flags live in `s.god` and are read by `rules.js` (free build, infinite resources, no game over, forced raid) and `tactics.js` via `TAC.god` (invincible, sure hit, one-hit). Operations return `null` or an error string like the rest of `UNM`. Tested by `test/god.cjs`. |
 | `src/battle.js` | `Battle`: tactics screen: canvas renderer, camera/fit (`hudSpace()`, `fit()`), HUD, input. |
 | `src/render.js` | Base cutaway scene renderer (rooms, sky, earth, people walking). |
 | `src/sprites.js` | `Art`: procedural SVG -> pixelized sprites for people/animals; `Art.portrait()` hand-placed 48x48 front-facing pixel portraits. |
@@ -40,6 +41,15 @@ to the list in `build.py`.
 | `src/audio.js` | `Sound`: synthesized sound effects and music (Web Audio, no files). |
 | `src/style.css` | All styles. Responsive blocks at the end: phone portrait, short landscape (`max-height: 560px`), Fold inner screen / tablets. |
 | `assets/icons/` | Committed app icon PNGs. Regenerate with `python3 tools/make_icons.py [A|B|C]` (needs Playwright). |
+
+## Updates and accessibility
+
+- `build.py` writes a build id into the PWA (`window.__BUILD`) and a `sw.js` whose cache name changes per build. A new
+  service worker installs quietly and **waits**; `ui.js` (`setupUpdates`) shows the "Update now" banner and the Settings row,
+  and `applyUpdate` posts `SKIP_WAITING` then reloads. Do not add `skipWaiting()` back to the install handler.
+- All display/motion/sound options are `prefs` keys applied by `applyPrefs()` as body classes (`text-xxl`, `font-easy`, `hc`,
+  `still`, `big-touch`, `focus-strong`, `space-loose`, `cb`) with their CSS in the "accessibility options" block of `style.css`.
+  New options go through the `seg()` / `tog()` helpers in `accessHtml()`.
 
 ## Saves
 
@@ -56,11 +66,12 @@ node test/raid.cjs       # base raids
 node test/abil.cjs       # role abilities
 node test/politics.cjs   # warlords
 node test/story.cjs      # story events
+node test/god.cjs        # god mode
 node test/tech.cjs       # tech tree (some "could not place" lines are known and pre-existing)
 node test/balance.cjs    # balance report
 
 pip install playwright && python3 -m playwright install chromium
-python3 build.py && python3 test/setupui.py   # browser UI tests: setupui, battle, raidui, politicsui, plansui, storyui, roles
+python3 build.py && python3 test/setupui.py   # browser UI tests: setupui, battle, raidui, politicsui, plansui, storyui, roles, updateui (update banner, accessibility, god mode), godbattle
 ```
 
 UI tests drive `dist/preview.html` and write screenshots to `shots/` (git-ignored). Set `CHROME=/path/to/chrome`

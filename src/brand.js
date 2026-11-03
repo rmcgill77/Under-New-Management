@@ -141,7 +141,7 @@ const Brand = (() => {
   }
 
   function splash(done) {
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduce = (window.__still || matchMedia('(prefers-reduced-motion: reduce)').matches);
     const root = document.createElement('div');
     root.className = 'splash'; root.setAttribute('role', 'img'); root.setAttribute('aria-label', 'Burnt Pixel Studios');
     root.innerHTML = '<canvas width="160" height="90" aria-hidden="true"></canvas><p class="splash-skip" aria-hidden="true">tap to continue</p>';

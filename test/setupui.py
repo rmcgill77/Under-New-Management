@@ -21,7 +21,7 @@ async def run(pw,name,w,h,mobile):
     st=await p.evaluate("(()=>{const s=window.__unm.s;return {d:s.difficulty,iron:s.ironman,tut:s.tutorial.step,b:s.res.buttons}})()")
     print(name,'new game',st)
     # settings: accessibility
-    await p.click('#settingsBtn'); await p.click('[data-act=textsize][data-arg=xl]'); await p.click('[data-act=cb]'); await p.click('[data-act=fast]'); await p.wait_for_timeout(150)
+    await p.click('#settingsBtn'); await p.click('[data-act=pset][data-arg="text:xl"]'); await p.click('[data-act=ptoggle][data-arg=cb]'); await p.click('[data-act=ptoggle][data-arg=fast]'); await p.wait_for_timeout(150)
     await p.screenshot(path=OUT+f'{name}-n2-settings.png')
     await p.click('[data-act=help]'); await p.wait_for_timeout(150)
     await p.screenshot(path=OUT+f'{name}-n3-help.png')
